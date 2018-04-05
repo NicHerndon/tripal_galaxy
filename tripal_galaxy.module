@@ -186,6 +186,22 @@ function tripal_galaxy_menu() {
     'weight' => 10,
   ];
 
+  // NOTE: This is to be inaccessible/invisible if the admin does not have the
+  // auto user option set
+  // View users .
+  $items['admin/tripal/extension/galaxy/users'] = [
+    'title' => 'Users',
+    'description' => 'View Tripal users that have accounts on Galaxy servers.',
+    'page callback' => 'tripal_galaxy_submission_admin_report',
+    'page arguments' => [6],
+    'access arguments' => ['administer galaxy'],
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'includes/tripal_galaxy.admin.inc',
+    'file path' => drupal_get_path('module', 'tripal_galaxy'),
+    'weight' => 10,
+  ];
+
+
   //
   // USER SUBMITTED WORKFLOW JOBS
   //

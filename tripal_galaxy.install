@@ -468,7 +468,7 @@ function tripal_galaxy_update_7103() {
     $schema = drupal_get_schema('tripal_galaxy');
     $spec = array(
       'type' => 'boolean',
-      'default' => 0,
+      'default' => FALSE,
       'not NULL' => TRUE,
     );
     db_add_field('tripal_galaxy', 'auto_user', $spec);

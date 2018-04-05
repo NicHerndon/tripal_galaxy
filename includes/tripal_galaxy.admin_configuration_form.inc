@@ -84,11 +84,27 @@ function tripal_galaxy_admin_configuration_form($form, $form_state, $galaxy_id =
         when executing workflows.', '#required' => FALSE);
 
   // API Key
-  $form['api_key'] = array('#title' => t('API Key'), '#type' => 'textfield', '#size' => 50,
+  $form['api_key'] = array(
+    '#title' => t('API Key'),
+    '#type' => 'textfield',
+    '#size' => 50,
     '#default_value' => $default_api_key,
     '#description' => "The API key for the user name specified above.
         If this field is left blank then it is expected that the user
-        will provide their own API key when submitting a job.", '#required' => FALSE);
+        will provide their own API key when submitting a job.",
+    '#required' => FALSE
+  );
+
+  // Check box for adding users to the galaxy server on workflow submissions
+  $form['auto_user'] = array(
+    '#title' => t('Add Users'),
+    '#type' => 'checkbox',
+    '#default_value' => FALSE,
+    '#description' => "This option adds users that submit workflows to this
+        Galaxy server. This allows users to have direct associations to what
+        submissions they have launched on the Galaxy side and recover results if
+        their download links on the Tripal side expire.",
+  );
 
   // Default submit
   $form['submit'] = array(
@@ -154,6 +170,7 @@ function tripal_galaxy_admin_configuration_form_submit($form, &$form_state) {
     'username' => trim($form_state['values']['username']),
     'api_key' => trim($form_state['values']['api_key']),
     'uid' => trim($user->uid),
+    'auto_user' => trim($form_state['values']['auto_user']),
   );
 
    if ($form_state['clicked_button']['#name'] == 'submit') {
