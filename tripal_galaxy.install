@@ -65,8 +65,14 @@ function tripal_galaxy_add_galaxy_table(&$schema) {
       ),
       'description' => array(
         'type' => 'text',
-      'not NULL' => FALSE,
-       ),
+        'not NULL' => FALSE,
+      ),
+      'auto_user' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'size' => 'tiny',
+        'default' => 0,
+      ),
     ),
     'primary key' => array(
        0 => 'galaxy_id',
@@ -286,8 +292,8 @@ function tripal_galaxy_add_site_wide_files_table(&$schema) {
 }
 
 function tripal_galaxy_add_tripal_galaxy_users_table(&$schema) {
-  $schema['tripal_galaxy_users'] = array (
-    'table' => 'tripal_galaxy_users',
+  $schema['tripal_galaxy_user'] = array (
+    'table' => 'tripal_galaxy_user',
     'fields' => array (
       'galaxy_user_id' => array(
         'type' => 'serial',
@@ -297,6 +303,10 @@ function tripal_galaxy_add_tripal_galaxy_users_table(&$schema) {
         'type' => 'varchar',
         'lenght' => 256,
         'not null' => TRUE,
+      ),
+      'galaxy_id' => array(
+        'type' => 'int',
+        'not NULL' => TRUE
       ),
       'mode' => array(
         'type' => 'int',
@@ -345,6 +355,14 @@ function tripal_galaxy_add_tripal_galaxy_workflow_user_table(&$schema) {
       'galaxy_user_workflow_user_id' => array(
         'type' => 'serial',
         'not null' => TRUE,
+      ),
+      'galaxy_user_id' => array(
+        'type' => 'serial',
+        'not null' => TRUE
+      ),
+      'sid' => array(
+        'type' => 'int',
+        'not NULL' => TRUE
       ),
     ),
     'primary key' => array(
@@ -461,20 +479,30 @@ function tripal_galaxy_update_7102() {
 }
 
 /**
- * Add auto_user column to tripal_galaxy table.
+ * Add new tables for galaxy user coordination.
  */
 function tripal_galaxy_update_7103() {
   try {
     $schema = drupal_get_schema('tripal_galaxy');
     $spec = array(
-      'type' => 'boolean',
-      'default' => FALSE,
-      'not NULL' => TRUE,
+      'type' => 'int',
+      'not null' => TRUE,
+      'size' => 'tiny',
+      'default' => 0,
     );
-    db_add_field('tripal_galaxy', 'auto_user', $spec);
+    if (!db_field_exists('tripal_galaxy', 'auto_user')) {
+      db_add_field('tripal_galaxy', 'auto_user', $spec);
+    }
+    
+    $schema = array();
+    tripal_galaxy_add_tripal_galaxy_users_table($schema);
+    tripal_galaxy_add_tripal_galaxy_workflow_user_table($schema);
+    
+    db_create_table('tripal_galaxy_users', $schema['tripal_galaxy_users']);
+    db_create_table('tripal_galaxy_workflow_user', $schema['tripal_galaxy_workflow_user']);
   }
   catch (\PDOException $e) {
     $error = $e->getMessage();
-    throw new DrupalUpdateException('Could not update the tripal_galaxy_custom_quota table: '. $error);
+    throw new DrupalUpdateException('Could not update the tripal_galaxy tables: '. $error);
   }
 }
