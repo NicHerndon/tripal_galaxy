@@ -16,6 +16,7 @@ function tripal_galaxy_admin_configuration_form($form, $form_state, $galaxy_id =
   $breadcrumb[] = l('Tripal', 'admin/tripal');
   $breadcrumb[] = l('Extensions', 'admin/tripal/extension');
   $breadcrumb[] = l('Galaxy', 'admin/tripal/extension/galaxy');
+  $breadcrumb[] = l('Users', 'admin/tripal/extensions/galaxy/users');
   drupal_set_breadcrumb($breadcrumb);
 
   $default_server_name = "";
@@ -23,6 +24,7 @@ function tripal_galaxy_admin_configuration_form($form, $form_state, $galaxy_id =
   $default_description = "";
   $default_api_key = "";
   $default_url = "";
+  $default_auto_user = FALSE;
 
   // If a galaxy id is set, feel free to declare all the default values with the
   // appropriate
@@ -37,6 +39,7 @@ function tripal_galaxy_admin_configuration_form($form, $form_state, $galaxy_id =
       $default_server_name = $galaxy->servername;
       $default_user_name = $galaxy->username;
       $default_url = $galaxy->url;
+      $default_auto_user = $galaxy->auto_user;
     }
   }
 
@@ -99,11 +102,11 @@ function tripal_galaxy_admin_configuration_form($form, $form_state, $galaxy_id =
   $form['auto_user'] = array(
     '#title' => t('Add Users'),
     '#type' => 'checkbox',
-    '#default_value' => FALSE,
+    '#default_value' => $default_auto_user,
     '#description' => "This option adds users that submit workflows to this
-        Galaxy server. This allows users to have direct associations to what
-        submissions they have launched on the Galaxy side and recover results if
-        their download links on the Tripal side expire.",
+        Galaxy server. This allows users to have direct associations to
+        submissions launched on the Galaxy server and recover results if
+        their download links on the Tripal site expire.",
   );
 
   // Default submit
@@ -190,6 +193,7 @@ function tripal_galaxy_admin_configuration_form_submit($form, &$form_state) {
     }
 
     // Default message.
+    // TODO: this should be changed based if the admin user is adding or editing
     drupal_set_message(t('Galaxy instance has been added'));
     drupal_goto("/admin/tripal/extension/galaxy");
   }
