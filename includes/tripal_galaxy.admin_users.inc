@@ -11,41 +11,65 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
   $breadcrumb[] = l('Users', 'admin/tripal/extension/galaxy/users');
   drupal_set_breadcrumb($breadcrumb);
 
-  tripal_add_d3js();
-  drupal_add_js(drupal_get_path ('module', 'tripal_galaxy') . '/theme/js/tripal_galaxy.dashboard.js');
-  drupal_add_css(drupal_get_path ('module', 'tripal_galaxy') . '/theme/css/tripal_galaxy.dashboard.css');
-
   // Get some basic stats
-  $headers = array();
-  $rows = array();
+  $headers = array('user', 'galaxy server', 'galaxy user');
+  // Show up to the first 25 entries on the join of the tripal_galaxy_users,
+  //  tripal_galaxy, user tables.
+
+  $rows = array(array('pie', 'pie', 'pie'),);
 
   $form['title'] = array(
-  '#type' => 'textfield',
-  '#title' => t('Filter by server or user'),
-  '#size' => 15,
+    '#type' => 'textfield',
+    '#title' => t('Filter by server or user'),
+    '#size' => 15,
+    '#ajax' => array(
+      'event' => 'keyup', 
+      'effect' => 'fade',
+      'wrapper' => 'association_table',
+      'method' => 'replace',
+      'callback' => 'tripal_galaxy_admin_galaxy_users_submit',
+    ),
   //'#default_value' => isset($form_state['storage']['title']) ? $form_state['storage']['title'] : '',
   );
 
-  // Submit button.
-  $form['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t("Find"),
+  // Render the table array.
+  $form['table'] = array(
+    '#prefix' => '<div id="association_table">',
+    '#suffix' => '</div>',
+    '#type' => 'fieldset',
+
+    // '#theme' => 'table',
+    // '#header' => $headers,
+    // '#rows' => $rows,
+    // '#empty' => t('Empty')
   );
 
-  // Render the table array.
- $form['table'] = array(
-   '#theme' => 'table',
-   '#header' => 'test',
-   '#rows' => $rows,
-   '#empty' => t('Empty')
- );
+  // $form['smol'] = array(
+  //   '#theme' => 'table',
+  //   '#header' => $headers,
+  //   '#rows' => $rows,
+  //   '#empty' => t('Empty')
+  // );
+
+  if(!empty($form_state['values']['title']) && $form_state['values']['title']){
+    $form['table']['smol'] = array(
+      '#theme' => 'table',
+      '#header' => $headers,
+      '#rows' => $rows,
+      '#empty' => t('Empty')
+    );
+    // dpm($form_state);
+    // dpm($form);
+  }
   return $form;
 }
 
-function tripal_galaxy_admin_galaxy_users_form(){
 
-}
-
-function tripal_galaxy_admin_galaxy_users_submit(){
-
+function tripal_galaxy_admin_galaxy_users_submit($form, $form_state){
+  // Run the sql query checking against server name or user name
+  // dpm('test');
+  // $rows = array(array('pickle', 'pickle', 'pickle'),);
+  // // wipe and populate the table with those entries
+  // $form['table'] = $rows;
+  return $form['table'];
 }

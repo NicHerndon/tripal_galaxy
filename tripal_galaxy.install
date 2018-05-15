@@ -299,9 +299,13 @@ function tripal_galaxy_add_tripal_galaxy_users_table(&$schema) {
         'type' => 'serial',
         'not null' => TRUE
       ),
+      'uid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
       'galaxy_user' => array(
         'type' => 'varchar',
-        'lenght' => 256,
+        'length' => 256,
         'not null' => TRUE,
       ),
       'galaxy_id' => array(
@@ -422,9 +426,8 @@ function tripal_galaxy_uninstall () {
   db_drop_table('tripal_galaxy_expiration_files');
   db_drop_table('tripal_galaxy_workflow_user');
   db_drop_table('tripal_galaxy_users');
+
 }
-
-
 
 
 /**
@@ -493,11 +496,11 @@ function tripal_galaxy_update_7103() {
     if (!db_field_exists('tripal_galaxy', 'auto_user')) {
       db_add_field('tripal_galaxy', 'auto_user', $spec);
     }
-    
+
     $schema = array();
     tripal_galaxy_add_tripal_galaxy_users_table($schema);
     tripal_galaxy_add_tripal_galaxy_workflow_user_table($schema);
-    
+
     db_create_table('tripal_galaxy_users', $schema['tripal_galaxy_users']);
     db_create_table('tripal_galaxy_workflow_user', $schema['tripal_galaxy_workflow_user']);
   }
