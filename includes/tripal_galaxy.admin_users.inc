@@ -16,20 +16,19 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
   // Show up to the first 25 entries on the join of the tripal_galaxy_users,
   //  tripal_galaxy, user tables.
 
-  $rows = array(array('pie', 'pie', 'pie'),);
+  $rows = array();
 
-  $form['title'] = array(
+  $form['search'] = array(
     '#type' => 'textfield',
     '#title' => t('Filter by server or user'),
+    '#description' => t('Press enter to search'),
     '#size' => 15,
     '#ajax' => array(
-      'event' => 'keyup', 
-      'effect' => 'fade',
+      'keypress' => TRUE,
       'wrapper' => 'association_table',
       'method' => 'replace',
       'callback' => 'tripal_galaxy_admin_galaxy_users_submit',
     ),
-  //'#default_value' => isset($form_state['storage']['title']) ? $form_state['storage']['title'] : '',
   );
 
   // Render the table array.
@@ -37,39 +36,54 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
     '#prefix' => '<div id="association_table">',
     '#suffix' => '</div>',
     '#type' => 'fieldset',
-
-    // '#theme' => 'table',
-    // '#header' => $headers,
-    // '#rows' => $rows,
-    // '#empty' => t('Empty')
   );
 
-  // $form['smol'] = array(
-  //   '#theme' => 'table',
-  //   '#header' => $headers,
-  //   '#rows' => $rows,
-  //   '#empty' => t('Empty')
-  // );
+  $sql = "
+    SELECT DISTINCT U.name, TGU.galaxy_user, TG.servername
+    FROM ((tripal_galaxy_user TGU
+    INNER JOIN users U ON U.uid = TGU.uid)
+    INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
+    ";
+    // dpm($form_state['values']['search']);
+    $entries = db_query($sql);
+    $rows = array();
+    while($entry = $entries->fetchObject()){
+        $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
+    }
 
-  if(!empty($form_state['values']['title']) && $form_state['values']['title']){
+  $form['table']['smol'] = array(
+    '#theme' => 'table',
+    '#header' => $headers,
+    '#rows' => $rows,
+  );
+
+  if(!empty($form_state['values']['search']) && $form_state['values']['search']){
+    $sql = "
+      SELECT DISTINCT U.name, TGU.galaxy_user, TG.servername
+      FROM ((tripal_galaxy_user TGU
+      INNER JOIN users U ON U.uid = TGU.uid)
+      INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
+      WHERE U.name = :filter or TG.servername = :filter
+      ";
+      // dpm($form_state['values']['search']);
+      $entries = db_query($sql, [':filter' => $form_state['values']['search']]);
+      $rows = array();
+      while($entry = $entries->fetchObject()){
+          $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
+      }
     $form['table']['smol'] = array(
       '#theme' => 'table',
       '#header' => $headers,
       '#rows' => $rows,
-      '#empty' => t('Empty')
+      '#empty' => t('There are no mappings that match that name or server')
     );
-    // dpm($form_state);
-    // dpm($form);
+
   }
+
   return $form;
 }
 
 
 function tripal_galaxy_admin_galaxy_users_submit($form, $form_state){
-  // Run the sql query checking against server name or user name
-  // dpm('test');
-  // $rows = array(array('pickle', 'pickle', 'pickle'),);
-  // // wipe and populate the table with those entries
-  // $form['table'] = $rows;
   return $form['table'];
 }
