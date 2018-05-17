@@ -38,25 +38,52 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
     '#type' => 'fieldset',
   );
 
+  // Display all of the entries by default for the admin to browse
   $sql = "
     SELECT DISTINCT U.name, TGU.galaxy_user, TG.servername
     FROM ((tripal_galaxy_user TGU
     INNER JOIN users U ON U.uid = TGU.uid)
     INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
     ";
-    // dpm($form_state['values']['search']);
-    $entries = db_query($sql);
-    $rows = array();
-    while($entry = $entries->fetchObject()){
-        $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
-    }
 
-  $form['table']['smol'] = array(
+  $count = "
+    SELECT COUNT (*)
+    FROM ((tripal_galaxy_user TGU
+    INNER JOIN users U ON U.uid = TGU.uid)
+    INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
+    ";
+
+  $entries = db_query($sql);
+  $rows = array();
+  while($entry = $entries->fetchObject()){
+      $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
+  }
+
+  $count_e = "";
+
+  $count = db_query($count);
+  while($entry = $count->fetchObject()){
+    $count_e = $entry->count;
+  }
+
+  $counti = (int)$count_e;
+
+  $num_per_page = variable_get('tripal_galaxy_user_num_per_page', 25);
+  $page = pager_default_initialize($counti, $num_per_page);
+
+  $chunks = array_chunk($rows, $num_per_page, TRUE);
+
+  $form['table']['table'] = array(
     '#theme' => 'table',
+    '#rows' => $chunks[$page],
     '#header' => $headers,
-    '#rows' => $rows,
+  );
+  $form['table']['pager'] = array(
+    '#theme' => 'pager',
   );
 
+
+  // This is invoked when the a query is made
   if(!empty($form_state['values']['search']) && $form_state['values']['search']){
     $sql = "
       SELECT DISTINCT U.name, TGU.galaxy_user, TG.servername
@@ -71,12 +98,17 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
       while($entry = $entries->fetchObject()){
           $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
       }
-    $form['table']['smol'] = array(
-      '#theme' => 'table',
-      '#header' => $headers,
-      '#rows' => $rows,
-      '#empty' => t('There are no mappings that match that name or server')
-    );
+
+      $form['table']['table'] = array(
+        '#theme' => 'table',
+        '#rows' => $chunks[$page],
+        '#header' => $headers,
+        '#empty' => t('There are no mappings that match that name or server')
+
+      );
+      $form['table']['pager'] = array(
+        '#theme' => 'pager',
+      );
 
   }
 
