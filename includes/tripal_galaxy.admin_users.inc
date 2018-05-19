@@ -12,7 +12,7 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
   drupal_set_breadcrumb($breadcrumb);
 
   // Get some basic stats
-  $headers = array('user', 'galaxy server', 'galaxy user');
+  $headers = array('user', 'galaxy user', 'galaxy server');
   // Show up to the first 25 entries on the join of the tripal_galaxy_users,
   //  tripal_galaxy, user tables.
 
@@ -20,7 +20,7 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
 
   $form['search'] = array(
     '#type' => 'textfield',
-    '#title' => t('Filter by server or user'),
+    '#title' => t('Filter by Galaxy server or Tripal user'),
     '#description' => t('Press enter to search'),
     '#size' => 15,
     '#ajax' => array(
@@ -46,30 +46,14 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
     INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
     ";
 
-  $count = "
-    SELECT COUNT (*)
-    FROM ((tripal_galaxy_user TGU
-    INNER JOIN users U ON U.uid = TGU.uid)
-    INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
-    ";
-
   $entries = db_query($sql);
   $rows = array();
   while($entry = $entries->fetchObject()){
       $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
   }
 
-  $count_e = "";
-
-  $count = db_query($count);
-  while($entry = $count->fetchObject()){
-    $count_e = $entry->count;
-  }
-
-  $counti = (int)$count_e;
-
   $num_per_page = variable_get('tripal_galaxy_user_num_per_page', 25);
-  $page = pager_default_initialize($counti, $num_per_page);
+  $page = pager_default_initialize(sizeof($rows), $num_per_page);
 
   $chunks = array_chunk($rows, $num_per_page, TRUE);
 
@@ -83,21 +67,26 @@ function tripal_galaxy_admin_auto_users_page($form, &$form_state){
   );
 
 
-  // This is invoked when the a query is made
+  // This is invoked when the a query is made (when the user hits enter)
   if(!empty($form_state['values']['search']) && $form_state['values']['search']){
     $sql = "
       SELECT DISTINCT U.name, TGU.galaxy_user, TG.servername
       FROM ((tripal_galaxy_user TGU
       INNER JOIN users U ON U.uid = TGU.uid)
       INNER JOIN tripal_galaxy TG ON TG.galaxy_id = TGU.galaxy_id)
-      WHERE U.name = :filter or TG.servername = :filter
+      WHERE U.name LIKE :filter or TG.servername LIKE :filter
       ";
-      // dpm($form_state['values']['search']);
-      $entries = db_query($sql, [':filter' => $form_state['values']['search']]);
+
+      $entries = db_query($sql, [':filter' => $form_state['values']['search'] . '%']);
       $rows = array();
       while($entry = $entries->fetchObject()){
           $rows[] = array($entry->name, $entry->galaxy_user, $entry->servername);
       }
+
+      $num_per_page = variable_get('tripal_galaxy_user_num_per_page', 25);
+      $page = pager_default_initialize(sizeof($rows), $num_per_page);
+
+      $chunks = array_chunk($rows, $num_per_page, TRUE);
 
       $form['table']['table'] = array(
         '#theme' => 'table',

@@ -1032,3 +1032,180 @@ function tripal_galaxy_get_files_dir() {
 
   return $site_dir;
 }
+
+/**
+* Check the tripal_galaxy_user table for associations of galaxy servers the
+* Tripal user is trying to use
+*/
+function tripal_get_galaxy_user($uid){
+  $sql = "
+    SELECT * FROM tripal_galaxy_user WHERE tripal_galaxy_user.uid = :uid
+  ";
+  $entries = db_query($sql, [':uid' => $uid]);
+  $array_entries = array();
+  while($entry = $entries->fetchObject()){
+    $array_entries[] = $entry;
+  }
+  return $array_entries;
+}
+
+// Derived from https://stackoverflow.com/questions/6101956/generating-a-random-password-in-php/31284266#31284266
+/**
+ * Generate a random string, using a cryptographically secure
+ * pseudorandom number generator (random_int)
+ *
+ * For PHP 7, random_int is a PHP core function
+ * For PHP 5.x, depends on https://github.com/paragonie/random_compat
+ *
+ * @param int $length      How many characters do we want?
+ * @param string $keyspace A string of all possible characters
+ *                         to select from
+ * @return string
+ */
+function random_str(
+    $length,
+    $keyspace = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+) {
+    $str = '';
+    $max = mb_strlen($keyspace, '8bit') - 1;
+    if ($max < 1) {
+        throw new Exception('$keyspace must be at least two characters long');
+    }
+    for ($i = 0; $i < $length; ++$i) {
+        $str .= $keyspace[random_int(0, $max)];
+    }
+    return $str;
+}
+
+/**
+* Create a galaxy user based off of the following criteria
+* $uid:     The drupal user uid to add the association to
+* $managed: If TRUE then generate new username, password, and dummy email
+*           address
+* $gsid:    The galaxy server to add this user on
+* $auth:    This is an associative array populated with user provided
+*           'email', and 'password' if managed is FALSE
+*           If the auth array is not accepted this will return FALSE instead
+*           of a PHP object
+*
+* @return PHP objcet containing the row entry on tripal_galaxy_user table
+*
+*/
+function tripal_create_galaxy_user($uid, $gsid, $managed = TRUE, $auth = NULL){
+
+  // Connect to the galaxy server's with $gsid
+  $galaxy = tripal_galaxy_get_connection($gsid);
+
+  // Tripal created
+  if($managed){
+    $server = db_select('tripal_galaxy', 'tg')
+      ->fields('tg')
+      ->condition('galaxy_id', $gsid)
+      ->execute()
+      ->fetchObject();
+
+    $params = array();
+    date_default_timezone_set("UTC");
+    // get the drupal username and prepend 'galaxy_' as the galaxy username
+    $user = db_select('users', 'u')
+      ->fields('u')
+      ->condition('uid', $uid)
+      ->execute()
+      ->fetchObject();
+    $params['username'] = 'galaxy_' . $user->name . '_' . time();
+    // generate a password
+    $params['password'] = hash("sha512", random_str(64));
+    // generate a dummy email addr
+    $params['email'] = random_str(16) . '@localhost.localdomain';
+
+    // API call to make a new user on the given galaxy server
+    $users = new GalaxyUsers($galaxy);
+
+    // SUCCESS in creating a new user on specified galaxy server
+    $new_user = $users->create($params);
+
+    // ERROR
+    if(!$new_user)
+      throw new Exception($galaxy->getErrorMessage());
+
+    // By galaxy default the new_user will not have an API key so generate one
+    $api_key = $users->apiKey(array('user_id' => $new_user['id']));
+
+    // ERROR
+    if(!$api_key)
+      throw new Exception($galaxy->getErrorMessage());
+
+    // We have all the necessary information now to associate this user to
+    // Tripal and add this to the tripal_galaxy_user table
+    // CATS - All your base are belong to us
+    $values = [
+      'uid' => $uid,
+      'galaxy_user' => $new_user['username'],
+      'galaxy_id' => $gsid,
+      'mode' => 1,
+      'api_key' => $api_key,
+    ];
+
+    try {
+      $tgu = db_insert('tripal_galaxy_user')
+        ->fields($values)
+        ->execute();
+        // drupal_set_message('Successfully added new user to Galaxy Server: ' . $server->servername);
+        return $tgu;
+    }
+    catch (PDOException $e) {
+      // drupal_set_message(t('Error: %message', array('%message' => $e->getMessage())), 'error');
+      return FALSE;
+    }
+
+  }
+
+  // $managed == FALSE
+  // Mode 3, the user was already existing on the server before Tripal
+  // connected
+  else{
+    // else plug in the username and password and attempt to authenticate on
+    // given galaxy server
+    if($auth){
+      // $galaxy_instance = new GalaxyInstance($galaxy);
+
+      $auth = $galaxy->authenticate($auth['email'], $auth['password']);
+
+      // ERROR
+      if(!$auth)
+        throw new Exception($galaxy->getErrorMessage());
+
+      // this call will either return the current key or generate an api key
+      // that will henceforth belong to this user on this galaxy server
+      $api_key = $galaxy->getAPIKey();
+
+      // Associate this existing Galaxy user to Tripal and add this to the
+      // tripal_galaxy_user table
+
+      $values = [
+        'uid' => $uid,
+        'galaxy_user' => $new_user['username'],
+        'galaxy_id' => $gsid,
+        'mode' => 3,
+        'api_key' => $api_key,
+      ];
+
+      try {
+        $tgu = db_insert('tripal_galaxy_user')
+          ->fields($values)
+          ->execute();
+          // drupal_set_message('Successfully added new user to Galaxy Server: ' . $server->servername);
+          return $tgu;
+      }
+      catch (PDOException $e) {
+        // drupal_set_message(t('Error: %message', array('%message' => $e->getMessage())), 'error');
+        return FALSE;
+      }
+      // dpm($api_key);
+    }
+    // if auth array is null return FALSE
+    return FALSE;
+
+
+  }
+}
