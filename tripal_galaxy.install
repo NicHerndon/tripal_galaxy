@@ -18,7 +18,6 @@ function tripal_galaxy_schema() {
   tripal_galaxy_add_site_wide_files_table($schema);
   tripal_galaxy_add_tripal_galaxy_users_table($schema);
   tripal_galaxy_add_tripal_galaxy_workflow_user_table($schema);
-
   return $schema;
 }
 
@@ -103,6 +102,10 @@ function tripal_galaxy_add_workflow_submission_table(&$schema) {
         'type' => 'int',
         'not NULL' => TRUE
       ),
+      'galaxy_workflow_user_id' => array(
+        'type' => 'int',
+        'not NULL' => FALSE
+      ),
       'errors' => array(
         'type' => 'text',
       ),
@@ -133,6 +136,14 @@ function tripal_galaxy_add_workflow_submission_table(&$schema) {
         'description' => 'Galaxy provides an invocation ID that can be used ' .
           'to check the status of a submitted workflow.'
       )
+    ),
+    'foreign keys' => array(
+      'tripal_galaxy_workflow_user' => array(
+        'table' => 'tripal_galaxy_workflow_user',
+        'columns' => array(
+          'galaxy_workflow_user_id' => 'galaxy_workflow_user_id',
+        ),
+      ),
     ),
     'indexes' => array(
       'sid' => array('sid'),
@@ -310,46 +321,51 @@ function tripal_galaxy_add_tripal_galaxy_workflow_user_table(&$schema) {
   $schema['tripal_galaxy_workflow_user'] = array(
     'table' => 'tripal_galaxy_workflow_user',
     'fields' => array(
-      'galaxy_user_workflow_user_id' => array(
+      'galaxy_workflow_user_id' => array(
         'type' => 'serial',
         'not null' => TRUE,
       ),
-      'galaxy_user_id' => array(
-        'type' => 'serial',
-        'not null' => TRUE
+      'galaxy_workflow_id' => array(
+        'type' => 'int',
+        'not NULL' => true
       ),
-      'sid' => array(
+      'uid' => array(
         'type' => 'int',
         'not NULL' => TRUE
       ),
+      'workflow_id' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not NULL' => true,
+        'description' => 'The ID of the workflow on the Galaxy server.'
+      ),
     ),
     'primary key' => array(
-      'galaxy_user_workflow_user_id',
+      'galaxy_workflow_user_id',
     ),
     'foreign keys' => array(
-      'tripal_galaxy_users' =>  array(
-        'table' => 'tripal_galaxy_users',
+      'tripal_galaxy_workflow' =>  array(
+        'table' => 'tripal_galaxy_workflow',
         'columns' => array(
-          'galaxy_user_id' => 'galaxy_user_id',
+          'galaxy_workflow_id' => 'galaxy_workflow_id',
         ),
       ),
-      'tripal_galaxy_workflow_submission' => array(
-        'table' => 'tripal_galaxy_workflow_submission',
+      'users' => array(
+        'table' => 'users',
         'columns' => array(
-          'sid' => 'sid',
+          'uid' => 'uid',
         ),
       ),
     ),
     'indexes' => array(
-      'galaxy_user_id' => array('galaxy_user_id'),
-      'sid' => array('sid'),
+      'galaxy_workflow_user_id' => array('galaxy_workflow_user_id'),
+      'uid' => array('uid'),
     ),
     'unique keys' => array(
-      'sid_uq1' => array('sid'),
+      'workflow_uq1' => array('workflow_id'),
     )
   );
 }
-
 
 /**
  * Implements hook_requirements().
@@ -429,25 +445,12 @@ function tripal_galaxy_update_7102() {
 /**
  * Add new tables for galaxy user coordination.
  */
-function tripal_galaxy_update_7103() {
+function tripal_galaxy_update_7106() {
   try {
     $schema = drupal_get_schema('tripal_galaxy');
-    $spec = array(
-      'type' => 'int',
-      'not null' => TRUE,
-      'size' => 'tiny',
-      'default' => 0,
-    );
-    if (!db_field_exists('tripal_galaxy', 'auto_user')) {
-      db_add_field('tripal_galaxy', 'auto_user', $spec);
-    }
-
     $schema = array();
     tripal_galaxy_add_tripal_galaxy_users_table($schema);
-    tripal_galaxy_add_tripal_galaxy_workflow_user_table($schema);
-
     db_create_table('tripal_galaxy_users', $schema['tripal_galaxy_users']);
-    db_create_table('tripal_galaxy_workflow_user', $schema['tripal_galaxy_workflow_user']);
   }
   catch (\PDOException $e) {
     $error = $e->getMessage();
@@ -467,8 +470,59 @@ function tripal_galaxy_update_7104()
       'not NULL' => FALSE,
     );
     db_add_field('tripal_galaxy', 'serverstatus', $status);
+
+    $user_id = array(
+      'type' => 'int',
+      'not NULL' => FALSE,
+    );
+    db_add_field('tripal_galaxy_workflow_submission', 'galaxy_workflow_user_id', $user_id);
+
+    
+
   } catch (\PDOException $e) {
     $error = $e->getMessage();
     throw new DrupalUpdateException('Could not update the tripal_galaxy table: ' . $error);
+  }
+}
+
+/**
+ * Add additional new tables for galaxy user coordination.
+ */
+function tripal_galaxy_update_7105() {
+  try {
+    $spec = array(
+      'type' => 'int',
+      'not null' => true,
+      'size' => 'tiny',
+      'default' => 0,
+    );
+
+    if (!db_field_exists('tripal_galaxy', 'auto_user')) {
+      db_add_field('tripal_galaxy', 'auto_user', $spec);
+    }
+
+    $schema = array();
+    tripal_galaxy_add_tripal_galaxy_workflow_user_table($schema);
+    db_create_table('tripal_galaxy_workflow_user', $schema['tripal_galaxy_workflow_user']);
+
+  } catch (\PDOException $e) {
+    $error = $e->getMessage();
+    throw new DrupalUpdateException('Could not update the tripal_galaxy tables: ' . $error);
+  }
+}
+
+/**
+ * Add new tables for galaxy user coordination.
+ */
+function tripal_galaxy_update_7108() {
+  try {
+    $schema = drupal_get_schema('tripal_galaxy');
+    $schema = array();
+    tripal_galaxy_add_tripal_galaxy_users_table($schema);
+    db_create_table('tripal_galaxy_user', $schema['tripal_galaxy_user']);
+  }
+  catch (\PDOException $e) {
+    $error = $e->getMessage();
+    throw new DrupalUpdateException('Could not update the tripal_galaxy tables: '. $error);
   }
 }

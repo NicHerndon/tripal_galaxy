@@ -35,6 +35,50 @@ function tripal_galaxy_get_connection($galaxy_id) {
 }
 
 /**
+ * Retreives a GalaxyInstance objects using a galaxy_id and a drupal_user id.
+ *
+ * @param $galaxy_id
+ *   The ID of a galaxy server.
+ * @param $uid
+ *   The drupal id of the user.
+ *
+ * @return GalaxyInstance
+ *   A galaxyInstance object or FALSE on error.
+ *
+ */
+function tripal_galaxy_get_user_connection($galaxy_id, $uid) {
+  // Get the galaxy server for this workflow
+  $galaxy_server = db_select('tripal_galaxy', 'tg')
+    ->fields('tg')
+    ->condition('galaxy_id', $galaxy_id)
+    ->execute()
+    ->fetchObject();
+
+  $library = libraries_load('blend4php');
+  if (array_key_exists('error', $library)) {
+    drupal_set_message($library['error message'], 'error');
+    return false;
+  }
+
+  $connect = tripal_galaxy_split_url($galaxy_server->url);
+  $galaxy = new GalaxyInstance($connect['host'], $connect['port'], $connect['use_https']);
+  // Get the user's galaxy server api_key
+  $galaxy_api = db_select('tripal_galaxy_user', 'tgu')
+    ->fields('tgu')
+    ->condition('uid', $uid)
+    ->execute()
+    ->fetchObject();
+
+  $galaxy->setAPIKey($galaxy_api->api_key);
+  $error = $galaxy->getErrorType();
+  if ($error) {
+    return false;
+  }
+  return $galaxy;
+}
+
+
+/**
  * Splits a URL to a Galaxy server into the host, port and if HTTPS is required.
  *
  * @param $utl
@@ -347,29 +391,96 @@ function tripal_galaxy_get_history_name($submission, $node) {
  *   A Tripal v3 Job object or a Tripal v2 job ID.
  */
 function tripal_galaxy_invoke_workflow($sid, $job = NULL) {
-
   // Get the workflows that need execution
   $query = db_select('tripal_galaxy_workflow_submission', 'tgws');
   $query->fields('tgws');
   $query->join('tripal_galaxy_workflow', 'tgw', 'tgw.galaxy_workflow_id = tgws.galaxy_workflow_id');
-  $query->fields('tgw', ['galaxy_id', 'workflow_id', 'nid']);
+  $query->fields('tgw', ['galaxy_id', 'workflow_id', 'nid', 'galaxy_workflow_id']);
   $query->condition('tgws.sid', $sid);
   $submission = $query->execute()->fetchObject();
-
+  print_r($submission);
   if (!$submission) {
     throw new Exception('The provided submission ID does not exist');
   }
 
+  // Before we invoke the workflow check if the site is setup to support user
+  // submitted workflows.
+  if (tripal_galaxy_auto_user_status($submission->galaxy_id)) {
+    // First see if the submitting user has a tripal_galaxy_user profile.
+    // Because the invocation is handled as a job we cannot rely on the global
+    // $user variable, we'll need to query the webform_submissions table.
+    $query = db_select('webform_submissions', 'ws');
+    $query->fields('ws');
+    $query->condition('ws.sid', $sid);
+    $webform_submission = $query->execute()->fetchObject();
+
+    $galaxy_user = tripal_get_galaxy_user($webform_submission->uid);
+    print_r("Galaxy user $galaxy_user");
+    if (empty($galaxy_user)) {
+      tripal_create_galaxy_user($webform_submission->uid, $submission->galaxy_id, TRUE);
+    }
+    print_r("tripal_create_galaxy_user user");
+    $galaxy = tripal_galaxy_get_user_connection($submission->galaxy_id, $webform_submission->uid);
+    print_r("galaxy user $galaxy");
+    if (!$galaxy) {
+      $error = $galaxy->getError();
+      throw new Exception('Cannot connect to Galaxy server:' . $error['message']);
+    }
+
+    // Check to see if a user workflow has been created
+    $workflow = tripal_galaxy_workflow_user_status($submission->galaxy_workflow_id, $uid);
+    print_r("workflow $workflow");
+    // Build the workflow on the galaxy server for the user.
+    $galaxy_admin = tripal_galaxy_get_connection($submission->galaxy_id);
+    print_r("galaxy_admin $galaxy_admin");
+    if (!$galaxy_admin) {
+      $error = $galaxy->getError();
+      throw new Exception('Cannot connect to Galaxy server:' . $error['message']);
+    }
+    $gworkflows = new GalaxyWorkflows($galaxy_admin);
+    print_r("gworkflows $gworkflows");
+
+    $params = [
+      'workflow_id' => $submission->workflow_id
+    ];
+
+    $workflow_data = $gworkflows->download($params);
+    print_r("workflow_data \n\n");
+    print_r($workflow_data);
+    $workflow_info = [
+      'workflow' => $workflow_data,
+    ];
+
+    $user_workflow = $gworkflows->create($workflow_info);
+    print_r($user_workflow);
+    // Check if the user workflow exists, if not create it.
+    $values = [
+      'uid' => $galaxy_user,
+      'galaxy_workflow_id' => $submission->galaxy_workflow_id,
+      'workflow_id' => $user_workflow['id'],
+    ];
+
+    try {
+      $user_workflow_insert = db_insert('tripal_galaxy_workflow_user')
+        ->fields($values)
+        ->execute();
+      print_r("user_workflow_insert $user_workflow_insert");
+    } catch (PDOException $e) {
+      return false;
+    }
+  }
+  else {
   // Get a connection to the remote galaxy instance.
-  $galaxy = tripal_galaxy_get_connection($submission->galaxy_id);
-  if (!$galaxy) {
-    $error = $galaxy->getError();
-    throw new Exception('Cannot connect to Galaxy server:' . $error['message']);
+    $galaxy = tripal_galaxy_get_connection($submission->galaxy_id);
+    if (!$galaxy) {
+      $error = $galaxy->getError();
+      throw new Exception('Cannot connect to Galaxy server:' . $error['message']);
+    }
   }
 
   // The node for this submission
   $node = node_load($submission->nid);
-
+  print_r("node $node");
   // The array where the workflow input parameters are stored.
   $parameters = [];
 
@@ -656,41 +767,14 @@ function tripal_galaxy_invoke_workflow($sid, $job = NULL) {
     $parameters[$step_index] = $current_values;
   }
 
-  // Invoke the workflow and check for errors
-  $gworkflows = new GalaxyWorkflows($galaxy);
-  $params = [
-    'workflow_id' => $submission->workflow_id,
-    'parameters' => $parameters,
-    'inputs' => $input_datasets,
-    'history_id' => $history['id'],
-  ];
-  $invocation = $gworkflows->invoke($params);
-
-  if (!$invocation) {
-    $error = $galaxy->getError();
-    drupal_set_message($error['message'], 'error');
-    db_update('tripal_galaxy_workflow_submission')
-      ->fields([
-        'status' => 'Error',
-        'errors' => $error['message'],
-      ])
-      ->condition('sid', $submission->sid)
-      ->execute();
-    tripal_galaxy_send_submission_failed_mail($submission->sid, $node->uid);
+  // Before we invoke the workflow check if the site is setup to support user
+  // submitted workflows.
+  if (tripal_galaxy_auto_user_status($submission->galaxy_id)) {
+    tripal_galaxy_workflow_run($workflow->workflow_id, $galaxy, $submission, $parameter, $input_datasets, $history); 
   }
   else {
-    db_update('tripal_galaxy_workflow_submission')
-      ->fields([
-        'status' => 'Submitted',
-        'start_time' => REQUEST_TIME,
-        'end_time' => NULL,
-        'invocation_id' => $invocation['id'],
-      ])
-      ->condition('sid', $submission->sid)
-      ->execute();
-    tripal_galaxy_send_submission_start_mail($submission->sid, $node->uid);
+    tripal_galaxy_workflow_run($submission->workflow_id, $galaxy, $submission, $parameter, $input_datasets, $history); 
   }
-
 }
 
 
@@ -1064,6 +1148,48 @@ function tripal_create_galaxy_user($uid, $gsid, $managed = TRUE, $auth = NULL){
     }
     // if auth array is null return FALSE
     return FALSE;
+  }
+}
+
+
+/**
+ * Delete a galaxy user from remote galaxt site.
+ * $uid:     The drupal user uid to add the association to
+ * $gsid:    The galaxy server to add this user on
+ *
+ * @return Booleans True if successful False if Error
+ *
+ */
+function tripal_delete_galaxy_user($uid, $gsid) {
+
+  // Connect to the galaxy server's with $gsid
+  $galaxy = tripal_galaxy_get_connection($gsid);
+  $histories = db_select('tripal_galaxy_workflow_user', 'tg')
+    ->fields('tg')
+    ->condition('uid', $uid)
+    ->execute();
+
+  while ($histories->fetchAll()) {
+    tripal_galaxy_delete_remote_history($gsid, $histories->workflow_id);
+  }
+
+  // API call to make a new user on the given galaxy server.
+  $users = new GalaxyUsers($gsid);
+
+  //Get the galaxy username so we can get the galaxy user ID.
+  $duser = db_select('tripal_galaxy_user', 'tg')
+    ->fields('tg')
+    ->condition('uid', $uid)
+    ->execute()
+    ->fetchObject();
+
+  $userid = $users->getUserID(['user_id' => $duser->galaxy_user]);
+
+  //Now delete the user from the galaxy server.
+  $params = ['user_id' => $userid];
+  $deleted_user = $users->delete($params);
+  
+}
 
 /**
  * Walks through the tripal_galaxy_workflow_submission table and deletes any 
@@ -1144,5 +1270,88 @@ function tripal_galaxy_delete_remote_history($galaxy_id, $history_name) {
     drupal_set_message(t('Could not delete the remote history.  Please contact the web site administrator to report this issue.'), 'error');
     watchdog_exception('tripal_galaxy', $e);
     return FALSE;
+  }
+}
+
+/**
+ * Check the auto_user status of the site
+ * @param $galaxy_id: A unique ID for the galaxy server. If this is provided no
+ *        other arguments are needed.
+ * 
+ * @return Boolean as stored in the 
+ * 
+ */
+function tripal_galaxy_auto_user_status($galaxy_id) {
+  $galaxy = db_select('tripal_galaxy', 'tg')
+    ->fields('tg')
+    ->condition('galaxy_id', array($galaxy_id))
+    ->execute()
+    ->fetchObject();
+  return $galaxy->auto_user;
+}
+
+/**
+ * Check if this user has this workflow.
+ * 
+ * @param $galaxy_workflow_id: A unique ID for local workflow submission.
+ * TODO: How to handle expired workflows.
+ */
+function tripal_galaxy_workflow_user_status($galaxy_workflow_id, $uid)
+{
+  $galaxy_workflow = db_select('tripal_galaxy_workflow_user', 'tg')
+    ->fields('tg')
+    ->condition('galaxy_workflow_id', array($galaxy_workflow_id))
+    ->condition('uid', array($uid))
+    ->execute()
+    ->fetchObject();
+
+  return $galaxy_workflow;
+}
+
+/**
+ * Run a workflow on rmeote galaxy
+ * 
+ * @param $galaxy: A GalaxyInstance object
+ * @param $submission: A submission object that contains the galaxy_workflow_id, sid,
+ *    and submit_date properties.
+ * @param $parameter: An array of the workflow values.
+ * @param $input_datasets: An array of the inputs for the dataset.
+ * @param $history: An array of history returned from the galaxy server.
+ * 
+ * 
+ */
+function tripal_galaxy_workflow_run($workflow_id, $galaxy, $submission, $parameter, $input_datasets, $history) {
+  // Invoke the workflow and check for errors
+  $gworkflows = new GalaxyWorkflows($galaxy);
+  $params = [
+    'workflow_id' => $workflow_id,
+    'parameters' => $parameters,
+    'inputs' => $input_datasets,
+    'history_id' => $history['id'],
+  ];
+  $invocation = $gworkflows->invoke($params);
+
+  if (!$invocation) {
+    $error = $galaxy->getError();
+    drupal_set_message($error['message'], 'error');
+    db_update('tripal_galaxy_workflow_submission')
+      ->fields([
+        'status' => 'Error',
+        'errors' => $error['message'],
+      ])
+      ->condition('sid', $submission->sid)
+      ->execute();
+    tripal_galaxy_send_submission_failed_mail($submission->sid, $node->uid);
+  } else {
+    db_update('tripal_galaxy_workflow_submission')
+      ->fields([
+        'status' => 'Submitted',
+        'start_time' => REQUEST_TIME,
+        'end_time' => null,
+        'invocation_id' => $invocation['id'],
+      ])
+      ->condition('sid', $submission->sid)
+      ->execute();
+    tripal_galaxy_send_submission_start_mail($submission->sid, $node->uid);
   }
 }
