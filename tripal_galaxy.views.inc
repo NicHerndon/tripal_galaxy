@@ -222,6 +222,16 @@ function tripal_galaxy_views_data() {
     ),
   );
 
+  $data['tripal_galaxy_workflow']['workflow_type'] = array(
+    'title' => t('Workflow Type'),
+    'help' => t('If the type is "system" the results will not be shown on the analyses tab.'),
+    'field' => array(
+      'handler' => 'views_handler_field',
+    ),
+    'filter' => array(
+      'handler' => 'views_handler_filter_string',
+    ),
+  );
   // Joins
   $data['tripal_galaxy']['table']['join'] = array(
     'tripal_galaxy_workflow' => array(

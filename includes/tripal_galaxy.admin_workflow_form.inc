@@ -48,6 +48,10 @@ function tripal_galaxy_admin_workflows_form($form, &$form_state)
       '#type' => 'item',
       '#markup' => $workflow->status
     );
+    $form['rows'][$i]['workflow_type-' . $i] = array(
+      '#type' => 'item',
+      '#markup' => $workflow->workflow_type
+    );
     $form['rows'][$i]['workflow_ids-' . $i] = array(
       '#type' => 'item',
       '#markup' => 'Workflow ID: ' . $workflow->workflow_id . '</br>' .
@@ -96,6 +100,7 @@ function theme_tripal_galaxy_admin_workflows_form_rows($variables)
     'Workflow Name',
     'Galaxy Server',
     'Status',
+    'Type',
     //'Galaxy IDs',
     'Actions'
   );
@@ -110,8 +115,10 @@ function theme_tripal_galaxy_admin_workflows_form_rows($variables)
         '<i>Name on Galaxy server:</i> ' . drupal_render($row["workflow_name_galaxy" . $i]),
       drupal_render($row["servername-" . $i]),
       drupal_render($row["workflow_status-" . $i]),
+      drupal_render($row["workflow_type-" . $i]),
      // drupal_render($row["workflow_ids-" . $i]),
       drupal_render($row["actions-" . $i])
+
     );
   }
 

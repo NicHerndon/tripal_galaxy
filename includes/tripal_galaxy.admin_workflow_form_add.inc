@@ -77,7 +77,6 @@ function tripal_galaxy_admin_add_workflow_form($form, &$form_state) {
 
     // Loop through each workflow to add it to the form
     foreach ($workflows as $workflow) {
-
       // First let's check to see if this workflow exists in our database,
       // if it does, assign default values as appropriate
       $workflow_exists = FALSE;
@@ -144,6 +143,15 @@ function tripal_galaxy_admin_add_workflow_form($form, &$form_state) {
           '#value' => FALSE
         );
       }
+      // Workflow type will control if the results are displayed in the analysis
+      // tab.
+      $form['rows'][$i]['type-' . $i] = array(
+        '#type' => 'select',
+        '#description' => "'System' workflows will not <br>
+                          show in user's Analysis tab.",
+        '#default_value' => $workflow_rec->workflow_type,
+        '#options' => array('User' => t('User'), 'System' => t('System')),
+      );
     }
 
     // The themable funciton for the form.
@@ -179,7 +187,8 @@ function theme_tripal_galaxy_admin_add_workflow_form_rows($variables) {
   $headers = array(
     'Add Workflow',
     'Workflow Name',
-    'Workflow Id'
+    'Workflow Id',
+    'Workflow Type'
   );
 
   // Theme the rows of this form's table.
@@ -190,7 +199,8 @@ function theme_tripal_galaxy_admin_add_workflow_form_rows($variables) {
     $rows[] = array(
       drupal_render($row["available-" . $i]),
       drupal_render($row["workflow_name-" . $i]),
-      drupal_render($row["workflow_id-" . $i]) . drupal_render($row["workflow_uuid-" . $i])
+      drupal_render($row["workflow_id-" . $i]) . drupal_render($row["workflow_uuid-" . $i]),
+      drupal_render($row["type-" . $i])
     );
     $i ++;
   }
@@ -241,6 +251,7 @@ function tripal_galaxy_admin_add_workflow_form_submit($form, &$form_state) {
           'galaxy_id' => $form_state['values']['galaxy_id-server'],
           'available' => $form_rows[$i]['available-' . $i],
           'workflow_uuid' =>  $form_rows[$i]['workflow_uuid-' . $i],
+          'workflow_type' => $form_rows[$i]['type-' . $i],
         );
 
         // Create the appropriate node for this workflow

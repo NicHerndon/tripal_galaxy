@@ -181,6 +181,11 @@ function tripal_galaxy_add_workflow_table(&$schema){
         'type' => 'text',
         'not NULL'=> TRUE,
       ),
+      'workflow_type' => array(
+        'type' => 'varchar',
+        'length' => 1024,
+        'default' => 'User',
+      ),
     ),
     'primary key' => array(
       0 => 'galaxy_workflow_id',
@@ -438,6 +443,24 @@ function tripal_galaxy_update_7104() {
       $error = $e->getMessage();
       throw new DrupalUpdateException('Could not update the tripal_galaxy table: ' . $error);
     }
+  } catch (\PDOException $e) {
+    $error = $e->getMessage();
+    throw new DrupalUpdateException('Could not update the tripal_galaxy table: ' . $error);
+  }
+}
+
+/**
+ * This update adds the serverstatus column to the tripal_galaxy table.
+ */
+function tripal_galaxy_update_7105()
+{
+  try {
+    $workflow_type = array(
+      'type' => 'varchar',
+      'length' => 1024,
+      'default' => 'User',
+    );
+    db_add_field('tripal_galaxy_workflow', 'workflow_type', $workflow_type);
   } catch (\PDOException $e) {
     $error = $e->getMessage();
     throw new DrupalUpdateException('Could not update the tripal_galaxy table: ' . $error);
